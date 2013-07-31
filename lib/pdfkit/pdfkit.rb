@@ -1,4 +1,5 @@
 require 'shellwords'
+require 'tempfile'
 
 class PDFKit
 
@@ -13,6 +14,12 @@ class PDFKit
   class ImproperSourceError < StandardError
     def initialize(msg)
       super("Improper Source: #{msg}")
+    end
+  end
+
+  class PDFGenerationError < StandardError
+    def initialize(msg)
+      super("Generation failed: #{msg}")
     end
   end
 
@@ -31,12 +38,14 @@ class PDFKit
     raise NoExecutableError.new unless File.exists?(PDFKit.configuration.wkhtmltopdf)
   end
 
-  def command(path = nil)
+  def command(path = nil, temp_file = nil)
     args = [executable]
     args += @options.to_a.flatten.compact
     args << '--quiet'
 
-    if @source.html?
+    if temp_file
+      args << temp_file.path
+    elsif @source.html?
       args << '-' # Get HTML from stdin
     else
       args << @source.to_s
@@ -57,25 +66,60 @@ class PDFKit
     end
   end
 
-  def to_pdf(path=nil)
+  def to_pdf(path=nil, opts)
     append_stylesheets
 
-    invoke = command(path)
+    tmp    = (opts[:ensure_termination] && @source.html?) ? get_temp_file : nil
+    invoke = command(path, tmp)
 
-    result = IO.popen(invoke, "wb+") do |pdf|
-      pdf.puts(@source.to_s) if @source.html?
-      pdf.close_write
-      pdf.gets(nil)
-    end
-    result = File.read(path) if path
+    result = process_pdf(path, invoke, tmp, opts)
 
+    raise PDFGenerationError.new("#{path}, generation was not completed properly") unless file_complete?(result.to_s)
     # $? is thread safe per http://stackoverflow.com/questions/2164887/thread-safe-external-process-in-ruby-plus-checking-exitstatus
     raise "command failed: #{invoke}" if result.to_s.strip.empty? or !$?.success?
+
     return result
   end
 
-  def to_file(path)
-    self.to_pdf(path)
+  def file_complete? result
+    result[-4,3] == 'EOF'
+  end
+
+  def get_temp_file
+    tmp = Tempfile.new(['source', '.html'])
+    # We encode to UTF-8 to prevent some invalid byte code errors.
+    tmp.write(@source.to_s.encode('UTF-8', :undef => :replace, :invalid => :replace, :replace => ""))
+    tmp.rewind
+    tmp
+  end
+
+  # We give the possibility to ensure the termination of the process because
+  # wkhtmltopdf 0.10 RC2 never terminates.
+  # To do so we need to launch a subprocess, and kill it after a given time (30 by default).
+  # Otherwise ( for wkhtmltopdf <= 0.9 ) we can simply go through stdin and invoke the command as it will not hand indefinetly
+  #
+  # Returns the content of the PDF file.
+  def process_pdf(path, invoke, tmp, opts)
+    if opts[:ensure_termination]
+      timeout = opts[:timeout] || 30
+      @process = IO.popen(invoke)
+      sleep timeout # Whilst wkhtmltopdf is not fixed, we need to put a sleep on the main thread to make sure the pdf generation is done before killing the process
+      Process.kill :SIGINT, @process.pid
+      tmp.close if tmp
+    else
+      result = IO.popen(invoke, "wb+") do |pdf|
+        pdf.puts(@source.to_s) if @source.html?
+        pdf.close_write
+        pdf.gets(nil)
+      end
+    end
+    result = File.read(path) if path
+
+    result
+  end
+
+  def to_file(path, opts = { ensure_termination: false, timeout: 30 })
+    self.to_pdf(path, opts)
     File.new(path)
   end
 
