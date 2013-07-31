@@ -20,6 +20,24 @@ gem install wkhtmltopdf-binary
 ```
 *Note:* The automated installer has been removed.
 
+### Warning on wkhtmltopdf
+
+If you are using one of the latest versions of wkhtmltopdf ( > 0.9 ), wkhtmltopdf never terminates and hangs out indefinetly (and so will PDFKit).
+To prevent this from happening, you can use the following option :
+
+```ruby
+kit = PDFKit.new(html)
+kit.to_file(path, ensure_termination: true)
+```
+
+Which will kill the process after 30 seconds of activity (ensuring most of the PDF will be generated, even larger one.)
+If the 30 second timer does not suits your need, feel free to change it's duration :
+
+```ruby
+kit = PDFKit.new(html)
+kit.to_file(path, ensure_termination: true, timeout: 15)
+```
+
 ## Usage
 ```ruby
 # PDFKit.new takes the HTML and any options for wkhtmltopdf
@@ -104,13 +122,13 @@ config.middleware.use PDFKit::Middleware, {}, :except => ['/secret']
    around this issue you may want to run a server with multiple workers
    like Passenger or try to embed your resources within your HTML to
    avoid extra HTTP requests.
-   
-   Example solution (rails / bundler), add unicorn to the development 
-   group in your Gemfile `gem 'unicorn'` then run `bundle`. Next, add a 
+
+   Example solution (rails / bundler), add unicorn to the development
+   group in your Gemfile `gem 'unicorn'` then run `bundle`. Next, add a
    file `config/unicorn.conf` with
-   
+
         worker_processes 3
-   
+
    Then to run the app `unicorn_rails -c config/unicorn.conf` (from rails_root)
 
 *  **Resources aren't included in the PDF:** Images, CSS, or JavaScript
@@ -124,7 +142,7 @@ config.middleware.use PDFKit::Middleware, {}, :except => ['/secret']
    asset host.
 
 *  **Mangled output in the browser:** Be sure that your HTTP response
-   headers specify "Content-Type: application/pdf" 
+   headers specify "Content-Type: application/pdf"
 
 ## Note on Patches/Pull Requests
 
