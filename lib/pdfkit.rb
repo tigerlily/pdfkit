@@ -1,4 +1,5 @@
 require 'pdfkit/source'
+require 'pdfkit/watcher'
 require 'pdfkit/pdfkit'
 require 'pdfkit/middleware'
 require 'pdfkit/configuration'
