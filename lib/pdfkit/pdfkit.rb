@@ -23,6 +23,12 @@ class PDFKit
     end
   end
 
+  class CommandFailedError < StandardError
+    def initialize(msg)
+      super("Command failed: #{msg}")
+    end
+  end
+
   attr_accessor :source, :stylesheets
   attr_reader :options
 
@@ -76,7 +82,7 @@ class PDFKit
 
     raise PDFGenerationError.new("#{path}, generation was not completed properly") unless file_complete?(result.to_s)
     # $? is thread safe per http://stackoverflow.com/questions/2164887/thread-safe-external-process-in-ruby-plus-checking-exitstatus
-    raise "command failed: #{invoke}" if result.to_s.strip.empty? or !$?.success?
+    raise CommandFailedError.new(invoke) if result.to_s.strip.empty? or !$?.success?
 
     return result
   end
