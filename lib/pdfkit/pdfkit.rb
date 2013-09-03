@@ -107,16 +107,13 @@ class PDFKit
   # Returns the content of the PDF file.
   def process_pdf(path, invoke, tmp, opts)
     if opts[:ensure_termination]
-      timeout = opts[:timeout] || 10
       @process = IO.popen(invoke)
 
-      watcher = PDFKit::Watcher.new(path, with_delay: 10)
-      watcher.watch_for(/EOF/) do |line, pattern|
+      watcher = PDFKit::Watcher.new(path, with_delay: 10, timeout: opts[:timeout])
+      watcher.watch_for_end_of_file do
         Process.kill :SIGINT, @process.pid
         tmp.close if tmp
       end
-
-      sleep timeout # Whilst wkhtmltopdf is not fixed, we need to put a sleep on the main thread to make sure the pdf generation has started before continuing
     else
       result = IO.popen(invoke, "wb+") do |pdf|
         pdf.puts(@source.to_s) if @source.html?
